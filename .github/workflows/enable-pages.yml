@@ -23,28 +23,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Decode binary assets if needed
-        run: |
-          python3 << 'PY'
-          import base64, json
-          from pathlib import Path
-          man_path = Path("_binaries_b64/MANIFEST.json")
-          if not man_path.exists():
-              print("no manifest")
-              raise SystemExit(0)
-          man = json.loads(man_path.read_text())
-          for item in man:
-              dest = Path(item["path"])
-              data = base64.b64decode(Path("_binaries_b64", item["b64"]).read_text())
-              if not dest.exists() or dest.read_bytes() != data:
-                  dest.parent.mkdir(parents=True, exist_ok=True)
-                  dest.write_bytes(data)
-                  print("wrote", dest, len(data))
-              else:
-                  print("ok", dest)
-          PY
-
-      - uses: actions/configure-pages@v5
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Prepare Pages artifact
         run: |
