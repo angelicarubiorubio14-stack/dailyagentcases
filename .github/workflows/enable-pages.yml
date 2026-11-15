@@ -1,0 +1,71 @@
+name: Enable Pages and decode assets
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-setup
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Decode binary assets
+        run: |
+          python3 << 'PY'
+          import base64, json
+          from pathlib import Path
+          man = json.loads(Path("_binaries_b64/MANIFEST.json").read_text())
+          for item in man:
+              dest = Path(item["path"])
+              data = base64.b64decode(Path("_binaries_b64", item["b64"]).read_text())
+              if not dest.exists() or dest.read_bytes() != data:
+                  dest.parent.mkdir(parents=True, exist_ok=True)
+                  dest.write_bytes(data)
+                  print("wrote", dest, len(data))
+              else:
+                  print("ok", dest)
+          PY
+
+      - name: Commit decoded binaries
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add favicon.ico assets/*.png
+          if git diff --cached --quiet; then
+            echo "No binary changes"
+          else
+            git commit -m "Add binary preview assets"
+            git push
+          fi
+
+      - name: Enable GitHub Pages from main / root
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          echo '{"build_type":"legacy","source":{"branch":"main","path":"/"}}' > /tmp/pages.json
+          gh api --method POST /repos/${GITHUB_REPOSITORY}/pages \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            --input /tmp/pages.json
+          post=$?
+          echo "POST exit $post"
+          if [ $post -ne 0 ]; then
+            gh api --method PUT /repos/${GITHUB_REPOSITORY}/pages \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              --input /tmp/pages.json
+          fi
+          echo "Current Pages config:"
+          gh api /repos/${GITHUB_REPOSITORY}/pages
